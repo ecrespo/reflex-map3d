@@ -68,6 +68,10 @@ other branch can publish even if a workflow is changed to try.
 - `Source branch policy`
 - `Version and changelog`
 
+The dependency graph, Dependabot alerts and Dependabot security updates are
+enabled. The dependency review job hard-fails without the dependency graph, so
+do not turn it off.
+
 `develop` only blocks force pushes and deletion, so a solo maintainer can keep
 pushing to it directly. If the project moves to a feature-branch flow, add
 `Lint and format`, `Type check`, `Tests (Python 3.12)` and
