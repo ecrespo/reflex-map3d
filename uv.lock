@@ -1853,7 +1853,7 @@ wheels = [
 
 [[package]]
 name = "reflex-map3d"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -1868,6 +1868,7 @@ dev = [
     { name = "pip-audit" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "twine" },
 ]
@@ -1881,6 +1882,7 @@ requires-dist = [
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6" },
     { name = "reflex", specifier = ">=0.9.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "twine", marker = "extra == 'dev'", specifier = ">=5" },

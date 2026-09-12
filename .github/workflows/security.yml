@@ -170,9 +170,12 @@ jobs:
     name: Dependency review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    # Only contents:read. Requesting pull-requests:write here would force every
+    # caller of this reusable workflow to grant it too, and a release has no
+    # business holding write access to pull requests. Findings surface as job
+    # annotations instead of a PR comment.
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -181,7 +184,6 @@ jobs:
       - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
-          comment-summary-in-pr: on-failure
           license-check: false
 
   codeql:

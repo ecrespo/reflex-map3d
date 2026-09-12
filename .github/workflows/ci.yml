@@ -20,6 +20,7 @@ concurrency:
 env:
   UV_VERSION: "0.11.7"
   FORCE_COLOR: "1"
+  ACTIONLINT_VERSION: "1.7.7"
 
 jobs:
   lint:
@@ -43,6 +44,17 @@ jobs:
 
       - name: ruff format
         run: uv run ruff format --check --diff custom_components tests
+
+      - name: Lint workflows (actionlint)
+        run: |
+          set -euo pipefail
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL "$url" -o /tmp/actionlint.tar.gz
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint -no-color
+
+      - name: Check reusable workflow permissions
+        run: uv run python .github/scripts/check_reusable_permissions.py
 
   typecheck:
     name: Type check
