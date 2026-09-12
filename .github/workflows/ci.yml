@@ -1,0 +1,138 @@
+name: CI
+
+# Code validation for everything that lands on develop, and a reusable
+# entry point (workflow_call) for the release gate and the release job.
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.11.7"
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-extras --frozen
+
+      - name: ruff check
+        run: uv run ruff check --output-format=github custom_components tests
+
+      - name: ruff format
+        run: uv run ruff format --check --diff custom_components tests
+
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-extras --frozen
+
+      - name: mypy
+        run: uv run mypy
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install project
+        run: uv sync --all-extras --python ${{ matrix.python-version }}
+
+      - name: pytest
+        run: >
+          uv run --python ${{ matrix.python-version }}
+          pytest -q
+          --cov=reflex_map3d
+          --cov-report=term-missing
+          --cov-report=xml
+          --junitxml=junit-${{ matrix.python-version }}.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: |
+            junit-${{ matrix.python-version }}.xml
+            coverage.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Build sdist and wheel
+        run: uv build --out-dir dist
+
+      - name: Validate metadata
+        run: uvx --from twine twine check --strict dist/*
+
+      - name: Smoke test the wheel
+        run: |
+          uv venv /tmp/smoke
+          VIRTUAL_ENV=/tmp/smoke uv pip install dist/*.whl
+          /tmp/smoke/bin/python -c "import reflex_map3d; print(reflex_map3d.__name__, 'import OK')"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14

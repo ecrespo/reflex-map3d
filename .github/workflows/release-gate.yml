@@ -1,0 +1,163 @@
+name: Release gate
+
+# Everything a pull request into main must satisfy before it can be merged
+# and released: correct source branch, a bumped version, a changelog entry,
+# the full CI suite and the full security suite.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  source-branch:
+    name: Source branch policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only develop or hotfix/* may target main
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REF" == "develop" || "$HEAD_REF" == hotfix/* ]]; then
+            echo "Source branch '$HEAD_REF' is allowed to target main."
+          else
+            echo "::error::'$HEAD_REF' cannot target main. Merge into develop first, or use a hotfix/* branch."
+            exit 1
+          fi
+
+  version:
+    name: Version and changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packaging
+        run: python -m pip install --quiet packaging
+
+      - name: Compare versions, tags and changelog
+        id: check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee -a "$GITHUB_OUTPUT"
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import sys
+          import tomllib
+
+          from packaging.version import InvalidVersion, Version
+
+
+          def fail(message: str) -> None:
+              print(f"::error::{message}", file=sys.stderr)
+              sys.exit(1)
+
+
+          def version_of(source: bytes) -> str:
+              return tomllib.loads(source.decode())["project"]["version"]
+
+
+          head = version_of(pathlib.Path("pyproject.toml").read_bytes())
+
+          base_sha = os.environ["BASE_SHA"]
+          base_raw = subprocess.run(
+              ["git", "show", f"{base_sha}:pyproject.toml"],
+              capture_output=True,
+          )
+          base = version_of(base_raw.stdout) if base_raw.returncode == 0 else "0.0.0"
+
+          try:
+              head_v, base_v = Version(head), Version(base)
+          except InvalidVersion as exc:
+              fail(f"Version is not PEP 440 compliant: {exc}")
+
+          print(f"main: {base}  ->  this PR: {head}", file=sys.stderr)
+
+          if head_v <= base_v:
+              fail(
+                  f"pyproject.toml version must be bumped above main's {base}; it is still {head}."
+              )
+
+          tag = f"v{head}"
+          existing = subprocess.run(
+              ["git", "tag", "--list", tag], capture_output=True, text=True
+          ).stdout.strip()
+          if existing:
+              fail(f"Tag {tag} already exists. Choose a new version.")
+
+          changelog = pathlib.Path("CHANGELOG.md")
+          if not changelog.exists():
+              fail("CHANGELOG.md is missing.")
+
+          pattern = re.compile(rf"^##\s*\[?{re.escape(head)}\]?", re.MULTILINE)
+          if not pattern.search(changelog.read_text(encoding="utf-8")):
+              fail(f"CHANGELOG.md has no '## [{head}]' section.")
+
+          print(f"version={head}")
+          print(f"tag={tag}")
+          PY
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release gate"
+            echo
+            echo "Version to be released: \`${{ steps.check.outputs.version }}\`"
+            echo "Tag to be created on merge: \`v${{ steps.check.outputs.version }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  code-validation:
+    name: Code validation
+    needs: [source-branch]
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  security-validation:
+    name: Security validation
+    needs: [source-branch]
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      actions: read
+
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    needs: [source-branch, version, code-validation, security-validation]
+    if: always()
+    steps:
+      - name: Require every gate job to succeed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "Gate job results: $RESULTS"
+          for result in $RESULTS; do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::Release gate failed (a required job reported '$result')."
+              exit 1
+            fi
+          done
+          echo "Release gate passed. This PR is ready to merge into main."
