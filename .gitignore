@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.idea/
+
+# Reflex
+.web/
+.states/
+assets/external/
+*.db
+
+# Agent scratch output
+Claude outputs/

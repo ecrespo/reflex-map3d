@@ -1,0 +1,194 @@
+name: Release
+
+# Runs once a release PR lands on main: re-validates, tags the version read
+# from pyproject.toml, publishes the distributions to PyPI and cuts the
+# GitHub release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and validate, but do not tag, publish or release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      should_release: ${{ steps.resolve.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read version and check the tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          version="$(python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')"
+          tag="v${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists — nothing to release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag ${tag} does not exist yet — this commit will be released."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Version | \`${{ steps.resolve.outputs.version }}\` |"
+            echo "| Tag | \`${{ steps.resolve.outputs.tag }}\` |"
+            echo "| Will release | \`${{ steps.resolve.outputs.should_release }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  validate:
+    name: Validate
+    needs: [prepare]
+    if: needs.prepare.outputs.should_release == 'true'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  security:
+    name: Security
+    needs: [prepare]
+    if: needs.prepare.outputs.should_release == 'true'
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  tag:
+    name: Tag ${{ needs.prepare.outputs.tag }}
+    runs-on: ubuntu-latest
+    needs: [prepare, publish-pypi]
+    if: needs.prepare.outputs.should_release == 'true' && !inputs.dry_run
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create and push the annotated tag
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $VERSION"
+          git push origin "$TAG"
+
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    # Publishing runs before tagging on purpose: a PyPI upload cannot be
+    # undone, while a tag created ahead of a failed upload would make
+    # `prepare` skip every later attempt at the same version.
+    needs: [prepare, validate, security]
+    if: needs.prepare.outputs.should_release == 'true' && !inputs.dry_run
+    environment:
+      name: pypi
+      url: https://pypi.org/project/reflex-map3d/${{ needs.prepare.outputs.version }}
+    permissions:
+      contents: read
+      # Required for PyPI Trusted Publishing (OIDC).
+      id-token: write
+    steps:
+      - name: Download distributions built by CI
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - name: List distributions
+        run: ls -l dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          print-hash: true
+          # Left empty when Trusted Publishing is configured; falls back to the
+          # PYPI_API_TOKEN secret when the secret is set.
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  github-release:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    needs: [prepare, publish-pypi, tag]
+    if: needs.prepare.outputs.should_release == 'true' && !inputs.dry_run
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Download distributions built by CI
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - name: Extract the changelog section
+        id: notes
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = rf"^##\s*\[?{re.escape(version)}\]?.*?$(.*?)(?=^##\s|^\[[^\]]+\]:\s|\Z)"
+          match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
+          body = match.group(1).strip() if match else ""
+
+          pathlib.Path("release-notes.md").write_text(
+              body or f"Release {version}.", encoding="utf-8"
+          )
+          print(f"Release notes: {len(body)} characters from CHANGELOG.md")
+          PY
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --title "reflex-map3d $VERSION" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            --verify-tag \
+            dist/*
