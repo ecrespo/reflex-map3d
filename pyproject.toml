@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reflex-map3d"
-version = "0.1.0"
+version = "0.1.1"
 description = "Generate a real-world 3D city from OpenStreetMap data in Reflex — a port of cartesiancs/map3d to React-Three-Fiber components for Reflex."
 readme = "README.md"
 license = { text = "MIT" }
@@ -53,6 +53,7 @@ dev = [
     "mypy>=1.11",
     "bandit[toml]>=1.7",
     "pip-audit>=2.7",
+    "pyyaml>=6",
 ]
 
 [tool.setuptools.packages.find]
