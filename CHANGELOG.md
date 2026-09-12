@@ -6,6 +6,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- The release gate decides from git tags instead of main's version field. A
+  version above the newest tag is a release; a version equal to it is a
+  maintenance change that ships nothing; anything lower is rejected. Merging a
+  CI or docs fix into `main` no longer forces a version bump, and a release
+  that fails before tagging can be retried under the same version instead of
+  burning it, which is what happened to 0.1.0.
+- The PyPI upload uses `skip-existing`, and tagging accepts a tag already
+  pointing at the same commit, so every release step is safe to repeat.
+
 ## [0.1.1]
 
 First published release. 0.1.0 was merged but never shipped: the release
