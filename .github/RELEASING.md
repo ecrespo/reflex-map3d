@@ -33,6 +33,12 @@ Only `develop` and `hotfix/*` branches may open a pull request against `main`.
 5. Merge. The release workflow tags `vX.Y.Z`, publishes to PyPI and creates the
    GitHub release with the changelog section plus the distribution files.
 
+The PyPI upload happens before the tag is created. A PyPI version cannot be
+re-uploaded, so it is the one truly irreversible step and it goes first; a tag
+written ahead of a failed upload would make every later attempt at the same
+version skip itself. If the upload fails, fix the cause and re-run the failed
+jobs: nothing needs cleaning up.
+
 Re-running the release workflow on a commit whose tag already exists is a
 no-op, so merges into `main` that do not bump the version never publish.
 
