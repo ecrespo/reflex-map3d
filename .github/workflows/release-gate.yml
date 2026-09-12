@@ -50,7 +50,7 @@ jobs:
       - name: Install packaging
         run: python -m pip install --quiet packaging
 
-      - name: Compare versions, tags and changelog
+      - name: Decide whether this is a release
         id: check
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -72,57 +72,84 @@ jobs:
               sys.exit(1)
 
 
-          def version_of(source: bytes) -> str:
+          def parse(source: bytes) -> str:
               return tomllib.loads(source.decode())["project"]["version"]
 
 
-          head = version_of(pathlib.Path("pyproject.toml").read_bytes())
+          def released_versions() -> list[Version]:
+              """Versions that actually shipped, which is what tags record."""
+              out = subprocess.run(
+                  ["git", "tag", "--list", "v*"], capture_output=True, text=True
+              ).stdout.split()
+              versions = []
+              for tag in out:
+                  try:
+                      versions.append(Version(tag.removeprefix("v")))
+                  except InvalidVersion:
+                      continue
+              return sorted(versions)
 
+
+          head_raw = parse(pathlib.Path("pyproject.toml").read_bytes())
           base_sha = os.environ["BASE_SHA"]
-          base_raw = subprocess.run(
-              ["git", "show", f"{base_sha}:pyproject.toml"],
-              capture_output=True,
-          )
-          base = version_of(base_raw.stdout) if base_raw.returncode == 0 else "0.0.0"
+          base_proc = subprocess.run(["git", "show", f"{base_sha}:pyproject.toml"], capture_output=True)
+          base_raw = parse(base_proc.stdout) if base_proc.returncode == 0 else "0.0.0"
 
           try:
-              head_v, base_v = Version(head), Version(base)
+              head, base = Version(head_raw), Version(base_raw)
           except InvalidVersion as exc:
               fail(f"Version is not PEP 440 compliant: {exc}")
 
-          print(f"main: {base}  ->  this PR: {head}", file=sys.stderr)
+          shipped = released_versions()
+          latest = shipped[-1] if shipped else None
 
-          if head_v <= base_v:
-              fail(
-                  f"pyproject.toml version must be bumped above main's {base}; it is still {head}."
-              )
+          print(f"main: {base}   this PR: {head}   latest release: {latest or 'none'}", file=sys.stderr)
 
-          tag = f"v{head}"
-          existing = subprocess.run(
-              ["git", "tag", "--list", tag], capture_output=True, text=True
-          ).stdout.strip()
-          if existing:
-              fail(f"Tag {tag} already exists. Choose a new version.")
+          if head < base:
+              fail(f"Version {head} is below main's {base}. Versions never go backwards.")
+          if latest is not None and head < latest:
+              fail(f"Version {head} is below the released {latest}. Versions never go backwards.")
+
+          if latest is not None and head == latest:
+              # Already on PyPI. release.yml sees the tag and no-ops, so this is a
+              # maintenance change to main rather than a release.
+              if head != base:
+                  fail(f"Version {head} is already released, but main is at {base}. Refusing an ambiguous state.")
+              print("mode=maintenance")
+              print("will_release=false")
+              print(f"version={head}")
+              print(f"tag=v{head}")
+              print(f"No release: {head} is already tagged and published.", file=sys.stderr)
+              sys.exit(0)
 
           changelog = pathlib.Path("CHANGELOG.md")
           if not changelog.exists():
               fail("CHANGELOG.md is missing.")
-
-          pattern = re.compile(rf"^##\s*\[?{re.escape(head)}\]?", re.MULTILINE)
-          if not pattern.search(changelog.read_text(encoding="utf-8")):
+          if not re.search(rf"^##\s*\[?{re.escape(str(head))}\]?", changelog.read_text(encoding="utf-8"), re.MULTILINE):
               fail(f"CHANGELOG.md has no '## [{head}]' section.")
 
+          print("mode=release")
+          print("will_release=true")
           print(f"version={head}")
-          print(f"tag={tag}")
+          print(f"tag=v{head}")
+          print(f"Release: {head} will be tagged and published on merge.", file=sys.stderr)
           PY
 
       - name: Summary
+        env:
+          MODE: ${{ steps.check.outputs.mode }}
+          VERSION: ${{ steps.check.outputs.version }}
+          TAG: ${{ steps.check.outputs.tag }}
         run: |
           {
             echo "### Release gate"
             echo
-            echo "Version to be released: \`${{ steps.check.outputs.version }}\`"
-            echo "Tag to be created on merge: \`v${{ steps.check.outputs.version }}\`"
+            if [[ "$MODE" == "release" ]]; then
+              echo "Merging this pull request releases \`$VERSION\` and tags it \`$TAG\`."
+            else
+              echo "Maintenance change. \`$VERSION\` is already tagged and published,"
+              echo "so merging this pull request releases nothing."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   code-validation:

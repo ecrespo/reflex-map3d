@@ -27,11 +27,36 @@ Only `develop` and `hotfix/*` branches may open a pull request against `main`.
 1. Bump `project.version` in `pyproject.toml` on `develop`.
 2. Add a `## [X.Y.Z]` section to `CHANGELOG.md`.
 3. Open a pull request from `develop` into `main`.
-4. The release gate fails unless the version is strictly greater than the one
-   on `main`, the tag `vX.Y.Z` does not already exist, and the changelog has a
-   matching section.
-5. Merge. The release workflow tags `vX.Y.Z`, publishes to PyPI and creates the
-   GitHub release with the changelog section plus the distribution files.
+4. Merge once the gate passes. The release workflow publishes to PyPI, tags
+   `vX.Y.Z` and creates the GitHub release with the changelog section plus the
+   distribution files.
+
+## What the gate decides
+
+Tags are the record of what shipped, so the gate reads them rather than
+trusting main's version field:
+
+| Situation | Verdict |
+| --- | --- |
+| Version above the newest tag | Release. Needs a matching changelog section. |
+| Version equals the newest tag, and equals main's | Maintenance. Merging releases nothing. |
+| Version below main's, or below the newest tag | Rejected. Versions never go backwards. |
+
+Maintenance pull requests matter: without them, a CI or documentation fix
+could not reach `main` without forcing a version bump.
+
+This is also why the gate does not compare against main's version alone. When
+`0.1.0` merged and its release then died before tagging, main carried a
+version that had never shipped, and a rule based on that field would have
+burned the number permanently. Reading tags instead lets a failed release be
+retried under the same version.
+
+## When a release fails halfway
+
+Every step is safe to repeat. The PyPI upload runs before the tag, uses
+`skip-existing`, and the tag step accepts a tag that already points at the
+same commit. Fix the cause and re-run the failed jobs; there is nothing to
+clean up and no version to burn.
 
 The PyPI upload happens before the tag is created. A PyPI version cannot be
 re-uploaded, so it is the one truly irreversible step and it goes first; a tag
@@ -67,6 +92,10 @@ token when the secret exists and OIDC trusted publishing when it does not.
 
 The `pypi` environment exists and only accepts deployments from `main`, so no
 other branch can publish even if a workflow is changed to try.
+
+Nobody can approve their own pull request, so `main` requires zero approvals.
+The checks are what actually gate it. Raise the count once a second maintainer
+exists.
 
 `main` requires a pull request and these status checks:
 
