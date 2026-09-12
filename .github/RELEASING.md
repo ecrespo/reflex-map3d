@@ -38,10 +38,11 @@ no-op, so merges into `main` that do not bump the version never publish.
 
 ## One-time repository setup
 
-### PyPI publishing
+### PyPI publishing — still pending
 
-Preferred: [Trusted Publishing](https://docs.pypi.org/trusted-publishers/).
-On PyPI, add a publisher to the `reflex-map3d` project with:
+This is the only step that cannot be automated, because it is done on the PyPI
+website. Add a [Trusted Publisher](https://docs.pypi.org/trusted-publishers/)
+to the `reflex-map3d` project with:
 
 | Field | Value |
 | --- | --- |
@@ -50,22 +51,38 @@ On PyPI, add a publisher to the `reflex-map3d` project with:
 | Workflow | `release.yml` |
 | Environment | `pypi` |
 
-Then create a GitHub environment named `pypi` (Settings → Environments) and,
-optionally, add yourself as a required reviewer so every publish is approved.
+If the project does not exist on PyPI yet, register a *pending* publisher
+instead; PyPI turns it into a real one on the first upload.
 
 Fallback: set a `PYPI_API_TOKEN` repository secret. The publish step uses the
 token when the secret exists and OIDC trusted publishing when it does not.
 
-### Branch protection
+### Already configured
 
-On `main`, require pull requests and these status checks:
+The `pypi` environment exists and only accepts deployments from `main`, so no
+other branch can publish even if a workflow is changed to try.
+
+`main` requires a pull request and these status checks:
 
 - `Gate`
 - `Source branch policy`
 - `Version and changelog`
 
-On `develop`, require `Lint and format`, `Type check`, `Tests (Python 3.12)`
-and `Build distributions`.
+`develop` only blocks force pushes and deletion, so a solo maintainer can keep
+pushing to it directly. If the project moves to a feature-branch flow, add
+`Lint and format`, `Type check`, `Tests (Python 3.12)` and
+`Build distributions` as required checks there too:
+
+```bash
+gh api -X PATCH repos/ecrespo/reflex-map3d/branches/develop/protection/required_status_checks \
+  -f 'strict=false' \
+  -F 'checks[][context]=Lint and format' \
+  -F 'checks[][context]=Type check' \
+  -F 'checks[][context]=Tests (Python 3.12)' \
+  -F 'checks[][context]=Build distributions'
+```
+
+Note that required status checks also reject direct pushes, not just merges.
 
 ### Code scanning
 
