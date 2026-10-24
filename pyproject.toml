@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=78.1.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "reflex-map3d"
-version = "0.1.1"
+version = "0.2.0"
 description = "Generate a real-world 3D city from OpenStreetMap data in Reflex — a port of cartesiancs/map3d to React-Three-Fiber components for Reflex."
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Ernesto Crespo", email = "ecrespo@gmail.com" }]
 keywords = [
     "reflex",
@@ -22,14 +22,13 @@ keywords = [
     "glb",
 ]
 
-dependencies = ["reflex>=0.9.0", "httpx>=0.24"]
+dependencies = ["reflex>=0.10.0", "httpx>=0.24"]
 
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -67,7 +66,7 @@ testpaths = ["tests"]
 pythonpath = ["custom_components"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 # Reflex generates the .pyi stubs; they are not hand-written source.
 extend-exclude = ["*.pyi", ".web", "map3d_demo/.web"]
@@ -80,7 +79,7 @@ ignore = ["E501"]
 "tests/*" = ["RUF012"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 mypy_path = "custom_components"
 packages = ["reflex_map3d"]
 ignore_missing_imports = true

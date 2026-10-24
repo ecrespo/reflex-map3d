@@ -6,7 +6,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.0]
+
 ### Changed
+
+- Requires Reflex 0.10.0 (`reflex>=0.10.0`), the current release; the demo app
+  pins `reflex==0.10.0`.
+- Requires Python 3.11 or newer. Python 3.10 is dropped from the classifiers,
+  the CI test matrix and the ruff and mypy targets.
+- The build backend requires `setuptools>=78.1.1`.
+- Dependencies in `uv.lock` refreshed.
+
+### CI
 
 - The release gate decides from git tags instead of main's version field. A
   version above the newest tag is a release; a version equal to it is a
@@ -47,6 +58,7 @@ the release gate refuses to reuse a version that already sits on `main`.
 - `BBox` bounding-box value object and Overpass query builders.
 - Demo application under `map3d_demo/`.
 
-[Unreleased]: https://github.com/ecrespo/reflex-map3d/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ecrespo/reflex-map3d/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ecrespo/reflex-map3d/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ecrespo/reflex-map3d/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ecrespo/reflex-map3d/releases/tag/v0.1.0
