@@ -16,6 +16,8 @@ Blender, Unreal, a digital twin, drone survey work or GPS-marker overlays.
 pip install reflex-map3d
 ```
 
+Requires Python 3.11+ and Reflex 0.10 or newer.
+
 The npm side (`three`, `@react-three/fiber`, `@react-three/drei`,
 `react-leaflet`, `leaflet`) is installed automatically by Reflex the first time
 the app compiles. There is no npm package to add by hand: the React sources ship

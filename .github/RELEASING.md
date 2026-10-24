@@ -4,7 +4,7 @@
 
 | Workflow | File | Triggered by | What it does |
 | --- | --- | --- | --- |
-| CI | `workflows/ci.yml` | push to `develop`, PRs into `develop`, `workflow_call` | ruff lint + format, mypy, pytest on Python 3.10–3.13 with coverage, build sdist/wheel, `twine check --strict`, wheel import smoke test |
+| CI | `workflows/ci.yml` | push to `develop`, PRs into `develop`, `workflow_call` | ruff lint + format, mypy, pytest on Python 3.11–3.13 with coverage, build sdist/wheel, `twine check --strict`, wheel import smoke test |
 | Security | `workflows/security.yml` | push to `develop`, PRs into `develop`, weekly cron, `workflow_call` | gitleaks over full history, bandit, semgrep, pip-audit over the locked dependency set, dependency review, CodeQL (Python + JS), Trivy filesystem scan |
 | Release gate | `workflows/release-gate.yml` | PRs into `main` | source-branch policy, version bump check, changelog check, then the full CI and Security suites |
 | Release | `workflows/release.yml` | push to `main`, manual | re-validates, creates the `vX.Y.Z` tag, publishes to PyPI, cuts the GitHub release |
